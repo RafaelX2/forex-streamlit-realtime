@@ -4,28 +4,30 @@ import requests
 from datetime import datetime
 import plotly.express as px
 from streamlit_autorefresh import st_autorefresh
+import re
 
-# Configuración de la app
+# CONFIGURACIÓN DE LA APP
 st.set_page_config(page_title="Divisas en Tiempo Real", layout="wide")
 st.title("💱 Seguimiento de Divisas en Tiempo Real")
 
-# Refrescar automáticamente cada 15 segundos
-st_autorefresh(interval=15000, key="refresh")
+# RECARGAR AUTOMÁTICAMENTE CADA 15 SEGUNDOS
+st_autorefresh(interval=15000, key="auto_refresh")
 
-# API Key de Polygon.io
+# CLAVE API DE POLYGON.IO
 API_KEY = "CYHTweCGGnvgzISZl5rJKQ5lT8AtGVxR"
 
-# Entrada del par de divisas
-par_input = st.text_input("Introduce el par de divisas (ej. EUR/USD)", value="EUR/USD")
+# INPUT DEL PAR DE DIVISAS
+par_input = st.text_input("Introduce el par de divisas (ej. EUR/USD o EUR USD)", value="EUR/USD")
 
-# Parseo del par
-try:
-    from_currency, to_currency = par_input.strip().upper().split("/")
-except ValueError:
-    st.error("⚠️ Usa el formato correcto: EUR/USD")
+# PROCESAR EL INPUT
+tokens = re.split(r"[/\s]+", par_input.strip().upper())
+if len(tokens) != 2:
+    st.error("⚠️ Usa el formato correcto: EUR/USD o EUR USD")
     st.stop()
 
-# Función para obtener la última cotización
+from_currency, to_currency = tokens
+
+# FUNCION PARA OBTENER ÚLTIMA COTIZACIÓN
 def obtener_ultima_cotizacion(from_currency, to_currency):
     url = f"https://api.polygon.io/v2/last/forex/{from_currency}/{to_currency}?apiKey={API_KEY}"
     r = requests.get(url)
@@ -38,24 +40,26 @@ def obtener_ultima_cotizacion(from_currency, to_currency):
             return precio, timestamp
     return None, None
 
-# Inicializar historial en sesión
+# GUARDAR HISTORIAL EN LA SESIÓN
 if "historial" not in st.session_state:
     st.session_state.historial = []
 
-# Obtener cotización actual
+# OBTENER COTIZACIÓN Y ACTUALIZAR
 precio, timestamp = obtener_ultima_cotizacion(from_currency, to_currency)
 
 if precio is not None:
     st.session_state.historial.append({"hora": timestamp, "precio": precio})
     df = pd.DataFrame(st.session_state.historial)
 
+    # MOSTRAR RESULTADOS
     st.subheader(f"📈 Cotización actual: {from_currency}/{to_currency}")
     st.metric("Precio (ask)", precio, help="Precio de venta más reciente")
     st.write("🕒 Última actualización:", timestamp.strftime("%Y-%m-%d %H:%M:%S"))
 
-    fig = px.line(df, x="hora", y="precio", title="Histórico en Tiempo Real")
+    fig = px.line(df, x="hora", y="precio", title="Histórico de Cotizaciones en Tiempo Real")
     st.plotly_chart(fig, use_container_width=True)
 
     st.dataframe(df.tail(10))
+
 else:
     st.warning("❌ No se pudo obtener datos. Verifica el par o la API.")
