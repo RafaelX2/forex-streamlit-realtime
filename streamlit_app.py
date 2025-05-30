@@ -27,16 +27,16 @@ if len(tokens) != 2:
 
 from_currency, to_currency = tokens
 
-# FUNCION PARA OBTENER ÚLTIMA COTIZACIÓN
+# FUNCION PARA OBTENER ÚLTIMA COTIZACIÓN USANDO EL ENDPOINT CORRECTO
 def obtener_ultima_cotizacion(from_currency, to_currency):
-    url = f"https://api.polygon.io/v2/last/forex/{from_currency}/{to_currency}?apiKey={API_KEY}"
+    url = f"https://api.polygon.io/v1/last_quote/currencies/{from_currency}/{to_currency}?apiKey={API_KEY}"
     r = requests.get(url)
     if r.status_code == 200:
         data = r.json()
         if "last" in data:
             quote = data["last"]
-            precio = quote["ask"]
-            timestamp = datetime.fromtimestamp(quote["timestamp"] / 1000)
+            precio = quote.get("ask", None)
+            timestamp = datetime.fromtimestamp(quote.get("timestamp", 0) / 1000)
             return precio, timestamp
     return None, None
 
