@@ -3,45 +3,59 @@ import pandas as pd
 import requests
 from datetime import datetime
 import plotly.express as px
+from streamlit_autorefresh import st_autorefresh
 
-# Tu API Key de Polygon.io
+# Configuración de la app
+st.set_page_config(page_title="Divisas en Tiempo Real", layout="wide")
+st.title("💱 Seguimiento de Divisas en Tiempo Real")
+
+# Refrescar automáticamente cada 15 segundos
+st_autorefresh(interval=15000, key="refresh")
+
+# API Key de Polygon.io
 API_KEY = "CYHTweCGGnvgzISZl5rJKQ5lT8AtGVxR"
 
-# Función para descargar datos por hora de hoy
-def obtener_datos(par):
-    fecha_hoy = datetime.today().strftime('%Y-%m-%d')
-    url = f"https://api.polygon.io/v2/aggs/ticker/{par}/range/1/hour/{fecha_hoy}/{fecha_hoy}?adjusted=true&sort=asc&limit=50000&apiKey={API_KEY}"
+# Entrada del par de divisas
+par_input = st.text_input("Introduce el par de divisas (ej. EUR/USD)", value="EUR/USD")
+
+# Parseo del par
+try:
+    from_currency, to_currency = par_input.strip().upper().split("/")
+except ValueError:
+    st.error("⚠️ Usa el formato correcto: EUR/USD")
+    st.stop()
+
+# Función para obtener la última cotización
+def obtener_ultima_cotizacion(from_currency, to_currency):
+    url = f"https://api.polygon.io/v2/last/forex/{from_currency}/{to_currency}?apiKey={API_KEY}"
     r = requests.get(url)
     if r.status_code == 200:
-        res = r.json()
-        resultados = res.get("results", [])
-        if resultados:
-            df = pd.DataFrame(resultados)
-            df["datetime"] = pd.to_datetime(df["t"], unit="ms")
-            df.set_index("datetime", inplace=True)
-            df["rets"] = df["c"].pct_change()
-            return df
-    return pd.DataFrame()
+        data = r.json()
+        if "last" in data:
+            quote = data["last"]
+            precio = quote["ask"]
+            timestamp = datetime.fromtimestamp(quote["timestamp"] / 1000)
+            return precio, timestamp
+    return None, None
 
-# Interfaz de usuario
-st.set_page_config(page_title="Divisas en Tiempo Real", layout="wide")
-st.title("🌍 Seguimiento de Divisas en Tiempo Real")
+# Inicializar historial en sesión
+if "historial" not in st.session_state:
+    st.session_state.historial = []
 
-# Entrada de usuario
-par = st.text_input("Introduce el ticker del par de divisas (ej. C:EURUSD)", value="C:EURUSD")
+# Obtener cotización actual
+precio, timestamp = obtener_ultima_cotizacion(from_currency, to_currency)
 
-# Botón para cargar datos
-if st.button("🔄 Obtener datos"):
-    df = obtener_datos(par)
-    if not df.empty:
-        st.subheader(f"📈 Precio horario para {par}")
-        fig1 = px.line(df, x=df.index, y="c", labels={"c": "Precio Cierre", "datetime": "Hora"})
-        st.plotly_chart(fig1, use_container_width=True)
+if precio is not None:
+    st.session_state.historial.append({"hora": timestamp, "precio": precio})
+    df = pd.DataFrame(st.session_state.historial)
 
-        st.subheader("📊 Rendimiento horario")
-        fig2 = px.line(df, x=df.index, y="rets", labels={"rets": "Rendimiento", "datetime": "Hora"})
-        st.plotly_chart(fig2, use_container_width=True)
+    st.subheader(f"📈 Cotización actual: {from_currency}/{to_currency}")
+    st.metric("Precio (ask)", precio, help="Precio de venta más reciente")
+    st.write("🕒 Última actualización:", timestamp.strftime("%Y-%m-%d %H:%M:%S"))
 
-        st.dataframe(df[["c", "rets"]].tail(10))
-    else:
-        st.warning("⚠️ No se encontraron datos o hubo error con la API.")
+    fig = px.line(df, x="hora", y="precio", title="Histórico en Tiempo Real")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.dataframe(df.tail(10))
+else:
+    st.warning("❌ No se pudo obtener datos. Verifica el par o la API.")
